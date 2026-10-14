@@ -64,7 +64,8 @@ h1 em, h2 em { font-style:italic; color:var(--accent); }
 
 /* ---------- before/after ---------- */
 .ba { position:relative; --split:50%; overflow:hidden; border-radius:20px; background:var(--ink-2); cursor:ew-resize; touch-action:pan-y; user-select:none; -webkit-user-select:none; }
-.ba .slot { position:absolute; inset:0; border-radius:0; border:none; z-index:0; align-items:flex-end; padding-bottom:28px; }
+.ba .slot { position:absolute; inset:0; border-radius:0; border:none; z-index:0; align-items:flex-end; padding-bottom:28px; opacity:0; }
+.ba.missing .slot { opacity:1; }
 .ba img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; pointer-events:none; z-index:1; }
 .ba img.after { clip-path:inset(0 0 0 var(--split)); }
 .ba::after { content:""; position:absolute; top:0; bottom:0; left:var(--split); width:2px; background:#fff; z-index:3; box-shadow:0 0 12px rgba(0,0,0,.4); }
@@ -105,6 +106,8 @@ section { padding:96px 0; }
 /* galeria 15 looks */
 .viewer { display:grid; gap:20px; }
 @media (min-width:940px){ .viewer { grid-template-columns:minmax(0,440px) 1fr; gap:64px; align-items:center; } }
+.viewer .ba.loading::before { content:""; position:absolute; top:50%; left:50%; width:28px; height:28px; margin:-14px 0 0 -14px; border:3px solid rgba(255,255,255,.25); border-top-color:var(--accent); border-radius:50%; z-index:6; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
 .viewer .ba { aspect-ratio:3/4; width:100%; max-width:440px; margin:0 auto; }
 @media (min-width:940px){ .viewer .ba { aspect-ratio:9/14; max-width:none; } }
 .viewer-side h3 { font-size:2.2rem; margin-bottom:10px; }
@@ -340,7 +343,8 @@ function buildBA(el, before, after, label) {
   el.innerHTML = '<div class="slot"><div><b>Espaço · antes e depois</b><span>' + (label || "Foto antes/depois") + '</span></div></div>' +
     '<img class="before" alt="Antes" src="' + before + '"/><img class="after" alt="Depois" src="' + after + '"/>' +
     '<span class="tag l">Antes</span><span class="tag r">Depois</span><div class="knob">' + ARROWS + '</div>';
-  el.querySelectorAll("img").forEach(function (im) { im.onerror = function () { im.remove(); }; });
+  el.classList.remove("missing");
+  el.querySelectorAll("img").forEach(function (im) { im.onerror = function () { im.remove(); el.classList.add("missing"); }; });
   el.style.setProperty("--split", "50%");
 }
 var drag = null;
@@ -369,14 +373,29 @@ PRESETS.forEach(function (p, i) {
   b.onclick = function () { show(i); };
   chips.appendChild(b);
 });
+var token = 0;
+function preload(url) {
+  return new Promise(function (res) {
+    var im = new Image(), done = false;
+    function end() { if (!done) { done = true; res(); } }
+    im.onload = end; im.onerror = end; im.src = url;
+    setTimeout(end, 6000);
+  });
+}
 function show(i) {
   cur = (i + PRESETS.length) % PRESETS.length;
-  var p = PRESETS[cur];
-  buildBA(viewer, p.before, p.after, p.name + ": foto antes e depois (vertical)");
+  var p = PRESETS[cur], my = ++token;
   document.getElementById("vName").textContent = p.name;
   var d = document.getElementById("vDesc"); d.textContent = p.desc; d.style.display = p.desc ? "" : "none";
   document.getElementById("vCount").textContent = (cur < 9 ? "0" : "") + (cur + 1) + " / 15";
   [].forEach.call(chips.children, function (c, k) { c.setAttribute("aria-pressed", k === cur ? "true" : "false"); });
+  viewer.classList.add("loading");
+  Promise.all([preload(p.before), preload(p.after)]).then(function () {
+    if (my !== token) return;   // o usuário já clicou em outro
+    buildBA(viewer, p.before, p.after, p.name + ": foto antes e depois (vertical)");
+    viewer.classList.remove("loading");
+    [cur + 1, cur - 1].forEach(function (k) { var q = PRESETS[(k + PRESETS.length) % PRESETS.length]; preload(q.before); preload(q.after); });
+  });
 }
 document.getElementById("prev").onclick = function () { show(cur - 1); };
 document.getElementById("next").onclick = function () { show(cur + 1); };
